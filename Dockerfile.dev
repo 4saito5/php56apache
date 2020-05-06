@@ -1,0 +1,86 @@
+# BUILDER (memcached, xdebugをビルドするため)
+# php5.6 が使えるのは3.7まで
+FROM alpine:3.7 as builder
+
+# pecl コマンドは pear をインストールすると使える
+RUN apk --no-cache add \
+  curl \
+  gcc \
+  libc-dev \
+  autoconf \
+  make \
+  libmemcached-dev \
+  libxml2-dev \
+  php5 \
+  php5-cli \
+  php5-pear \
+  php5-openssl \
+  php5-json \
+  php5-phar \
+  php5-dev
+
+# phpコマンドがphp5になっているためシンボリックリンクを作成
+RUN ln -s /usr/bin/php5 /usr/bin/php
+RUN pecl channel-update pecl.php.net
+
+# pecl でビルド
+RUN pecl install memcached-2.2.0
+RUN pecl install xdebug-2.5.5
+
+# Install composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin/ --filename=composer
+
+
+# 実運用コンテナ
+FROM alpine:3.7
+
+RUN apk --no-cache add \
+  php5 \
+  apache2 \
+  php5-apache2 \
+  php5-mysql \
+  php5-imap \
+  php5-zlib \
+  php5-pdo_mysql \
+  php5-iconv \
+  php5-mcrypt \
+  php5-exif \
+  php5-gd \
+  php5-xml \
+  php5-cli \
+  php5-pear \
+  php5-pdo \
+  php5-curl \
+  php5-openssl \
+  php5-opcache \
+  php5-ctype \
+  php5-dom \
+  php5-ftp \
+  php5-json \
+  php5-phar \
+  php5-posix \
+  php5-xmlreader \
+  php5-zip
+
+# phpコマンドがphp5になっているためシンボリックリンクを作成
+RUN ln -s /usr/bin/php5 /usr/bin/php
+
+RUN mkdir /run/apache2
+RUN rm /etc/apache2/conf.d/userdir.conf /etc/apache2/conf.d/info.conf
+
+COPY --from=builder /usr/bin/composer /usr/bin/
+COPY --from=builder /usr/lib/*.so.* /usr/lib/
+COPY --from=builder /usr/lib/php5/modules/memcached.so /usr/lib/php5/modules/
+COPY --from=builder /usr/lib/php5/modules/xdebug.so /usr/lib/php5/modules/
+RUN echo "zend_extension=/usr/lib/php5/modules/xdebug.so" > /etc/php5/conf.d/xdebug.ini
+RUN echo "extension=/usr/lib/php5/modules/memcached.so" > /etc/php5/conf.d/memcached.ini
+COPY ./file/apache2/httpd.conf /etc/apache2/httpd.conf
+COPY ./file/apache2/conf.d/deflate.conf /etc/apache2/conf.d/deflate.conf
+COPY ./file/apache2/conf.d/mpm.conf /etc/apache2/conf.d/mpm.conf
+COPY ./file/php/php.ini /etc/php5/php.ini
+COPY ./file/php/conf.d/php-extends.ini /etc/php5/conf.d/php-extends.ini
+
+
+EXPOSE 80
+CMD ["httpd", "-D", "FOREGROUND"]
+WORKDIR /var/www/html
